@@ -1,0 +1,3 @@
+pyinstaller --noconfirm --onefile --windowed --collect-all "tinify"  "D:/TinyPNGTool/main.py"
+
+pyuic5 app.ui -o ui.py

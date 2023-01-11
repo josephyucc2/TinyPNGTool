@@ -53,18 +53,19 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         tinify.key = keyStr
         for root, subdirs, files in os.walk(rootdir):
             for file in files:
+                QtWidgets.QApplication.processEvents()
                 print(file)
                 if "meta" not in file:
                     if ("png" in file or "jpg" in file) :
                         filePath = os.path.join(root, file)
                         dstPath = root.replace(rootdir, dstdir)
                         outFilePath = os.path.join(dstPath, file)
-                        print("Processing:"+filePath)
+                        if os.path.exists(outFilePath) and self.ui.skipCB.isChecked():
+                            self.ui.statusLabel.setText("Exist Skipped:"+file)
+                            continue
                         self.ui.statusLabel.setText("Processing:"+file)
-                        self.ui.statusLabel.repaint()
                         source = tinify.from_file(filePath)
                         os.makedirs(dstPath, exist_ok=True)
-                        print("dstFile:"+outFilePath)
                         source.to_file(outFilePath)
                  
 
