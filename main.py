@@ -42,11 +42,12 @@ class ApplicationWindow(QtWidgets.QMainWindow):
     def startCompress(self):
         rootDir = self.ui.srcText.text()
         dstDir = self.ui.dstText.text()
+        if dstDir == "":
+            dstDir = rootDir+"_Slim"
         apiKy = self.ui.apiText.text()
         with open("config.json", "w") as outfile:
             json.dump({"api": apiKy}, outfile)
         self.compress(rootDir, dstDir, apiKy)
-       
 
     def compress(self, rootdir, dstdir, keyStr):
         self.ui.statusLabel.setText("Start")
@@ -56,7 +57,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                 QtWidgets.QApplication.processEvents()
                 print(file)
                 if "meta" not in file:
-                    if ("png" in file or "jpg" in file) :
+                    if ("png" in file.lower() or "jpg" in file.lower()):
                         filePath = os.path.join(root, file)
                         dstPath = root.replace(rootdir, dstdir)
                         outFilePath = os.path.join(dstPath, file)
@@ -67,7 +68,6 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                         source = tinify.from_file(filePath)
                         os.makedirs(dstPath, exist_ok=True)
                         source.to_file(outFilePath)
-                 
 
         self.ui.statusLabel.setText("Image Compressing Completed")
         print("Image Compressing Completed")
