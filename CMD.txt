@@ -1,3 +1,2 @@
-pyinstaller --noconfirm --onefile --windowed --collect-all "tinify"  "D:/Projects/TinyPNGTool/main.py"
-
+pyinstaller --noconfirm --onefile --windowed --icon "./tinypng.ico"  "./TinyPngApp.py"
 pyuic5 app.ui -o ui.py
