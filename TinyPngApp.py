@@ -7,6 +7,7 @@ import tinify
 import json
 from multiprocessing import cpu_count
 from PyQt5.QtCore import QRunnable, QThreadPool, QObject, pyqtSignal
+import time
 
 
 class Task(QRunnable):
@@ -27,16 +28,24 @@ class Task(QRunnable):
         except Exception as e:
             self.errorCb(Exception(self.outFilePath + str(e)))
 
+
 class CallbackHandler(QObject):
     task_completed = pyqtSignal(str)
     task_failed = pyqtSignal(Exception)
+
     def callback(self, path):
         self.task_completed.emit(path)
 
-    def error_handler(self,error):
+    def error_handler(self, error):
         self.task_failed.emit(error)
 
+
 class ApplicationWindow(QtWidgets.QMainWindow):
+
+    count = 0
+    max = 0
+    startTime = None
+
     def __init__(self):
         super(ApplicationWindow, self).__init__()
         self.jsonfile = None
@@ -90,29 +99,35 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             self.compress(rootDir, dstDir, apiKy)
         except Exception as e:
             self.ui.statusLabel.setText(str(e))
-        
 
     def onTinfyCompleted(self, path: str):
         print(path)
         self.count += 1
         self.ui.progressBar.setValue(self.count)
+        self.ui.statusLabel.setText(
+            "Compressing {0} of {1}.".format(self.count, self.max))
 
         if(self.count == self.max):
-            self.ui.statusLabel.setText("Image Compressing Completed")
+            totalTime = time.time() - self.startTime
+            showS = "s"
+            if self.max==1:
+                showS = ""
+            self.ui.statusLabel.setText(
+                "{:d} image{} compressing completed,total process time: {:.2f} secs.".format(self.max, showS, totalTime))
             self.ui.startBtn.setEnabled(True)
 
-    def onTinifyError(self, err:Exception):
+    def onTinifyError(self, err: Exception):
         self.ui.statusLabel.setText(str(err))
 
     def compress(self, rootdir, dstdir, keyStr):
         self.ui.statusLabel.setText("Start")
-        
+        self.startTime = time.time()
         tinify.key = keyStr
         dirs = []
         for root, subdirs, files in os.walk(rootdir):
             for file in files:
                 filename = file.lower()
-                if filename.endswith(".png"):
+                if filename.endswith(".png") or filename.endswith(".jpg"):
                     filePath = os.path.join(root, file)
                     dstPath = root.replace(rootdir, dstdir)
                     outFilePath = os.path.join(dstPath, file)
@@ -136,7 +151,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         for (filePath, outFilePath, dstPath) in dirs:
             task = Task(filePath, outFilePath, dstPath,
-                        callback_handler.callback,callback_handler.error_handler)
+                        callback_handler.callback, callback_handler.error_handler)
             threadpool.start(task)
 
 
