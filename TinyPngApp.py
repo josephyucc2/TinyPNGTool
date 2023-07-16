@@ -9,7 +9,7 @@ from multiprocessing import cpu_count
 from PyQt5.QtCore import QRunnable, QThreadPool, QObject, pyqtSignal
 import time
 
-
+os.environ['REQUESTS_CA_BUNDLE'] = os.path.join(os.path.dirname(sys.argv[0]),'cacert.pem')
 class Task(QRunnable):
     def __init__(self, filePath, outFilePath, dstPath, cb, errcb):
         super().__init__()
@@ -26,7 +26,7 @@ class Task(QRunnable):
             source.to_file(self.outFilePath)
             self.cb(self.outFilePath)
         except Exception as e:
-            self.errorCb(Exception(self.outFilePath + str(e)))
+            self.errorCb(Exception(self.outFilePath + " " + str(e)))
 
 
 class CallbackHandler(QObject):
@@ -98,6 +98,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                 json.dump({"api": apiKy}, outfile)
             self.compress(rootDir, dstDir, apiKy)
         except Exception as e:
+            print(str(e))
             self.ui.statusLabel.setText(str(e))
 
     def onTinfyCompleted(self, path: str):
@@ -117,6 +118,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             self.ui.startBtn.setEnabled(True)
 
     def onTinifyError(self, err: Exception):
+        print(str(err))
         self.ui.statusLabel.setText(str(err))
 
     def compress(self, rootdir, dstdir, keyStr):
