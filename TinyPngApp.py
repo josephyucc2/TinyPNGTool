@@ -5,7 +5,36 @@ from ui import Ui_TinyPngApp
 import os
 import tinify
 import json
+from multiprocessing import cpu_count
+from PyQt5.QtCore import QRunnable, QThreadPool, QObject, pyqtSignal
 
+
+class Task(QRunnable):
+    def __init__(self, filePath, outFilePath, dstPath, cb, errcb):
+        super().__init__()
+        self.filePath = filePath
+        self.dstPath = dstPath
+        self.outFilePath = outFilePath
+        self.cb = cb
+        self.errorCb = errcb
+
+    def run(self):
+        try:
+            source = tinify.from_file(self.filePath)
+            os.makedirs(self.dstPath, exist_ok=True)
+            source.to_file(self.outFilePath)
+            self.cb(self.outFilePath)
+        except Exception as e:
+            self.errorCb(Exception(self.outFilePath + str(e)))
+
+class CallbackHandler(QObject):
+    task_completed = pyqtSignal(str)
+    task_failed = pyqtSignal(Exception)
+    def callback(self, path):
+        self.task_completed.emit(path)
+
+    def error_handler(self,error):
+        self.task_failed.emit(error)
 
 class ApplicationWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -21,7 +50,6 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                     self.ui.apiText.setText(self.jsonfile["api"])
                 openfile.close()
         self.ui.srcBrowseBtn.clicked.connect(self.readSrc)
-        self.ui.dstBrowseBtn.clicked.connect(self.readDst)
         self.ui.startBtn.clicked.connect(self.startCompress)
 
     def closeEvent(self, a0: QtGui.QCloseEvent) -> None:
@@ -41,46 +69,75 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             self.ui.dstText.setText(path)
 
     def startCompress(self):
-        rootDir = self.ui.srcText.text()
-        dstDir = self.ui.dstText.text()
-        if dstDir == "":
-            dstDir = rootDir+"_Slim"
-            os.makedirs(dstDir, exist_ok=True)
-        apiKy = self.ui.apiText.text()
-        with open("config.json", "w") as outfile:
-            json.dump({"api": apiKy}, outfile)
-        self.compress(rootDir, dstDir, apiKy)
+        try:
+            rootDir = self.ui.srcText.text()
+            dstDir = self.ui.dstText.text()
+            if not os.path.exists(rootDir):
+                self.ui.srcText.setText("")
+                raise Exception("Source Path Not Found!")
+
+            if dstDir == "":
+                dstDir = rootDir+"_Slim"
+
+                os.makedirs(dstDir, exist_ok=True)
+            else:
+                if not os.path.exists(dstDir):
+                    self.ui.dstText.setText("")
+                    raise Exception("Destination Path Not Found!")
+            apiKy = self.ui.apiText.text()
+            with open("config.json", "w") as outfile:
+                json.dump({"api": apiKy}, outfile)
+            self.compress(rootDir, dstDir, apiKy)
+        except Exception as e:
+            self.ui.statusLabel.setText(str(e))
+        
+
+    def onTinfyCompleted(self, path: str):
+        print(path)
+        self.count += 1
+        self.ui.progressBar.setValue(self.count)
+
+        if(self.count == self.max):
+            self.ui.statusLabel.setText("Image Compressing Completed")
+            self.ui.startBtn.setEnabled(True)
+
+    def onTinifyError(self, err:Exception):
+        self.ui.statusLabel.setText(str(err))
 
     def compress(self, rootdir, dstdir, keyStr):
         self.ui.statusLabel.setText("Start")
+        
         tinify.key = keyStr
         dirs = []
         for root, subdirs, files in os.walk(rootdir):
             for file in files:
-                
-                print(file)
-                if "meta" not in file:
-                    if ("png" in file.lower() or "jpg" in file.lower()):
-                        filePath = os.path.join(root, file)
-                        dstPath = root.replace(rootdir, dstdir)
-                        outFilePath = os.path.join(dstPath, file)
-                        if os.path.exists(outFilePath) and self.ui.skipCB.isChecked():
-                            self.ui.statusLabel.setText("Exist Skipped:"+file)
-                            continue
-                        dirs.append((filePath, outFilePath, dstPath))
-                        
-        index = 0
-        for (filePath, outFilePath, dstPath) in dirs:
-            QtWidgets.QApplication.processEvents()
-            self.ui.statusLabel.setText("Processing:"+file)
-            source = tinify.from_file(filePath)
-            os.makedirs(dstPath, exist_ok=True)
-            source.to_file(outFilePath)
-            index += 1
-            self.ui.progressBar.setValue(int(index/len(dirs)*100))
+                filename = file.lower()
+                if filename.endswith(".png"):
+                    filePath = os.path.join(root, file)
+                    dstPath = root.replace(rootdir, dstdir)
+                    outFilePath = os.path.join(dstPath, file)
+                    if os.path.exists(outFilePath) and self.ui.skipCB.isChecked():
+                        self.ui.statusLabel.setText("Exist Skipped:"+file)
+                        continue
+                    dirs.append((filePath, outFilePath, dstPath))
+        if len(dirs) == 0:
+            self.ui.statusLabel.setText("No PNG Image found in the folder.")
+            return
+        self.count = 0
+        self.ui.progressBar.setMaximum(len(dirs))
+        self.ui.startBtn.setEnabled(False)
+        self.ui.statusLabel.setText("Processing...")
+        self.max = len(dirs)
+        threadpool = QThreadPool.globalInstance()
+        threadpool.setMaxThreadCount(cpu_count())
+        callback_handler = CallbackHandler()
+        callback_handler.task_completed.connect(self.onTinfyCompleted)
+        callback_handler.task_failed.connect(self.onTinifyError)
 
-        self.ui.statusLabel.setText("Image Compressing Completed")
-        print("Image Compressing Completed")
+        for (filePath, outFilePath, dstPath) in dirs:
+            task = Task(filePath, outFilePath, dstPath,
+                        callback_handler.callback,callback_handler.error_handler)
+            threadpool.start(task)
 
 
 def main():
